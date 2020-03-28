@@ -25,12 +25,15 @@ void initGameCtrler(ringmaster_t* Game, char** input){
     printf("the number of hops should greater than 0\n");
     exit(1);
   }
-  
-  printf("Successful init Gamectrler\n");
 }
 
+void initOutput(ringmaster_t* Game){
+  printf("Potato Ringmaster\n");
+  printf("Players = %d\n", Game->numPlayers);
+  printf("Hops = %d\n", Game->numHops);
+}
 
-void SetUpServer(ringmaster_t* GameCtrler){
+void SetUpServer(ringmaster_t* GameCtrler, int id){
   int status;
   int socket_fd;
   struct addrinfo host_info;
@@ -84,7 +87,7 @@ void SetUpServer(ringmaster_t* GameCtrler){
     exit(1);
   }
 
-  printf("Waiting for connection on player 0\n");
+  printf("Waiting for connection on player %d, delete it later\n", id);
   struct sockaddr_storage socket_addr;
   socklen_t socket_addr_len = sizeof(socket_addr);
   int client_connection_fd;
@@ -93,12 +96,13 @@ void SetUpServer(ringmaster_t* GameCtrler){
     printf("Error: cannot accept connection on socket\n");
     exit(1);
   } 
-
+  
+  printf("Player %d is ready to play\n", id);
   char buffer[512];
   recv(client_connection_fd, buffer, 9, 0);
   buffer[9] = 0;
 
-  printf("Server received: %s", buffer);
+  printf("Server received: %s\n", buffer);
 
   freeaddrinfo(host_info_list);
   close(socket_fd);
@@ -129,10 +133,16 @@ int main(int argc, char** argv){
       }
     }
   }
-  
+  // rich the information in the object ringmaster
   ringmaster_t GameCtrler;
   initGameCtrler(&GameCtrler,argv);
-  SetUpServer(&GameCtrler);
+  initOutput(&GameCtrler);
+  
+  // use the ringmaster object to
+  for (int i = 0; i< GameCtrler.numPlayers; ++i){
+    SetUpServer(&GameCtrler, i);
+  }
+  printf("Ready to start game\n");
   waitForPlayers(&GameCtrler);
   return EXIT_SUCCESS;
 }
