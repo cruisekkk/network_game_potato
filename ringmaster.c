@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <netdb.h>
 #include <sys/socket.h>
 
@@ -12,7 +11,7 @@
 // 2: the number of players
 // 3: the number of hops
 void initGameCtrler(ringmaster_t* Game, char** input){
-  Game->portNum = atoi(input[1]);
+  Game->port = input[1];
   Game->numPlayers = atoi(input[2]);
   Game->numHops = atoi(input[3]);
   if (Game->numPlayers < 1){
@@ -33,25 +32,23 @@ void initOutput(ringmaster_t* Game){
   printf("Hops = %d\n", Game->numHops);
 }
 
-void SetUpServer(ringmaster_t* GameCtrler, int id){
+void SetUpServer(ringmaster_t* Game){
   int status;
   int socket_fd;
   struct addrinfo host_info;
   struct addrinfo *host_info_list;
   const char *hostname = NULL;
-  const char *port     = "4444";
 
   memset(&host_info, 0, sizeof(host_info));
 
   host_info.ai_family   = AF_UNSPEC;
   host_info.ai_socktype = SOCK_STREAM;
   host_info.ai_flags    = AI_PASSIVE;
-
-  status = getaddrinfo(hostname, port, &host_info, &host_info_list);
+  status = getaddrinfo(hostname, Game->port, &host_info, &host_info_list);
   if (status != 0) {
     printf("Error: cannot get address info for host\n");
     if (hostname != NULL){
-      printf("  (%s , %s)\n", hostname, port);
+      printf("  (%s , %s)\n", hostname, Game->port);
     }
     exit(1);
   }
@@ -62,7 +59,7 @@ void SetUpServer(ringmaster_t* GameCtrler, int id){
   if (socket_fd == -1) {
     printf("Error: cannot create socket");
     if (hostname != NULL){
-    printf("  (%s, %s)\n", hostname, port);
+    printf("  (%s, %s)\n", hostname, Game->port);
     }
     exit(1);
   }
@@ -73,7 +70,7 @@ void SetUpServer(ringmaster_t* GameCtrler, int id){
   if (status == -1) {
     printf("Error: cannot bind socket");
     if (hostname != NULL){
-    printf("  (%s, %s)\n", hostname, port);
+    printf("  (%s, %s)\n", hostname, Game->port);
     }
     exit(1);
   }
@@ -82,30 +79,33 @@ void SetUpServer(ringmaster_t* GameCtrler, int id){
   if (status == -1) {
     printf("Error: cannot listen on socket"); 
     if (hostname != NULL){
-    printf("  (%s, %s)\n", hostname, port);
+    printf("  (%s, %s)\n", hostname, Game->port);
     }
     exit(1);
   }
 
-  printf("Waiting for connection on player %d, delete it later\n", id);
   struct sockaddr_storage socket_addr;
   socklen_t socket_addr_len = sizeof(socket_addr);
-  int client_connection_fd;
-  client_connection_fd = accept(socket_fd, (struct sockaddr *)&socket_addr, &socket_addr_len);
-  if (client_connection_fd == -1) {
-    printf("Error: cannot accept connection on socket\n");
-    exit(1);
-  } 
+  int client_player_fds[Game->numPlayers];
   
-  printf("Player %d is ready to play\n", id);
-  char buffer[512];
-  recv(client_connection_fd, buffer, 9, 0);
-  buffer[9] = 0;
+  for (int id = 0; id < Game->numPlayers; ++id){
+    client_player_fds[id] = accept(socket_fd, (struct sockaddr *)&socket_addr, &socket_addr_len);
+    if (client_player_fds[id] == -1) {
+      printf("Error: cannot accept connection on socket\n");
+      exit(1);
+    }
+   
+    send(client_player_fds[id], &id, sizeof(int), 0);
+    printf("Player %d is ready to play\n", id);
+    Game->client_fds[id] = client_player_fds[id];
+    //printf("Server received: %s\n", buffer);
+  }
 
-  printf("Server received: %s\n", buffer);
 
-  freeaddrinfo(host_info_list);
-  close(socket_fd);
+
+
+  Game->host_info_list = host_info_list;
+  Game->listen_fd = socket_fd;
   return;
 }
 
@@ -138,12 +138,16 @@ int main(int argc, char** argv){
   initGameCtrler(&GameCtrler,argv);
   initOutput(&GameCtrler);
   
-  // use the ringmaster object to
-  for (int i = 0; i< GameCtrler.numPlayers; ++i){
-    SetUpServer(&GameCtrler, i);
-  }
+  // set up the connections between players and master
+  // collect the listen fd and clients' fd in the setting phase
+  SetUpServer(&GameCtrler);
+  
   printf("Ready to start game\n");
   waitForPlayers(&GameCtrler);
+
+
+  freeaddrinfo(GameCtrler.host_info_list);
+  close(GameCtrler.listen_fd);
   return EXIT_SUCCESS;
 }
 

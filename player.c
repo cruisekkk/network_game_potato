@@ -8,18 +8,17 @@
 
 void initPlayer(player_t* player, char** input){
   player->host = input[1];
-  player->portNum = input[2];
+  player->port = input[2];
   // lack port valid check
 }
 
-void ConnectToGameCtr(player_t* player){
+void ConnectToMaster(player_t* player){
   int status;
   int socket_fd;
   struct addrinfo host_info;
   struct addrinfo *host_info_list;
   const char *hostname = player->host;
-  const char *port     = "4444";
-  
+  const char* port = player->port;
   memset(&host_info, 0, sizeof(host_info));
   host_info.ai_family   = AF_UNSPEC;
   host_info.ai_socktype = SOCK_STREAM;
@@ -55,14 +54,83 @@ void ConnectToGameCtr(player_t* player){
     exit(1);
   }
 
-  const char *message = "hi there!";
-  send(socket_fd, message, strlen(message), 0);
+  int id = -1;
+  // take the player's id
+  recv(socket_fd, &id, sizeof(int), 0);
+  printf("my id is %d", id);
+  player->ID = id;
 
-  freeaddrinfo(host_info_list);
-  close(socket_fd);
-
+  player->master_host_info_list = host_info_list;
+  player->master_conn_fd = socket_fd;
   return;
 }
+
+
+void SetUpServer(player_t* player){
+  int status;
+  int socket_fd;
+  struct addrinfo host_info;
+  struct addrinfo *host_info_list;
+  const char *hostname = NULL;
+  char port[12];  
+  
+  sprintf(port, "%d", (int)(atoi(player->port ) + player->ID + 1));
+  //printf()  
+  memset(&host_info, 0, sizeof(host_info));
+
+  host_info.ai_family   = AF_UNSPEC;
+  host_info.ai_socktype = SOCK_STREAM;
+  host_info.ai_flags    = AI_PASSIVE;
+  status = getaddrinfo(hostname, port, &host_info, &host_info_list);
+  if (status != 0) {
+    printf("Error: cannot get address info for host\n");
+    if (hostname != NULL){
+      printf("  (%s , %s)\n", hostname, port);
+    }
+    exit(1);
+  }
+
+  socket_fd = socket(host_info_list->ai_family, 
+		     host_info_list->ai_socktype, 
+		     host_info_list->ai_protocol);
+  if (socket_fd == -1) {
+    printf("Error: cannot create socket");
+    if (hostname != NULL){
+    printf("  (%s, %s)\n", hostname, port);
+    }
+    exit(1);
+  }
+
+  int yes = 1;
+  status = setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+  status = bind(socket_fd, host_info_list->ai_addr, host_info_list->ai_addrlen);
+  if (status == -1) {
+    printf("Error: cannot bind socket");
+    if (hostname != NULL){
+    printf("  (%s, %s)\n", hostname, port);
+    }
+    exit(1);
+  }
+
+  status = listen(socket_fd, 100);
+  if (status == -1) {
+    printf("Error: cannot listen on socket"); 
+    if (hostname != NULL){
+    printf("  (%s, %s)\n", hostname, port);
+    }
+    exit(1);
+  }
+
+  player->local_host_info_list = host_info_list;
+  player->listen_fd = socket_fd;
+  printf("ffffkkk");
+  return;
+}
+
+
+
+
+
 
 int main(int argc, char** argv){
   if (argc != 3){
@@ -84,7 +152,16 @@ int main(int argc, char** argv){
   
   player_t player;
   initPlayer(&player, argv);
-  ConnectToGameCtr(&player);
+  // the first connection
+  ConnectToMaster(&player);
+  //
+  SetUpServer(&player);
+
+  //ConnectToLeft(&player);
+
+
+
   
-  //receiveID();
+  freeaddrinfo(player.master_host_info_list);
+  close(player.master_conn_fd);
 }
