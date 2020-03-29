@@ -57,6 +57,11 @@ void ConnectToMaster(player_t* player){
   int id = -1;
   // take the player's id
   recv(socket_fd, &id, sizeof(int), 0);
+
+  int num = 0;
+  // get the toal num of the players
+  recv(socket_fd, &num, sizeof(int), 0);
+
   printf("my id is %d", id);
   player->ID = id;
 
@@ -75,6 +80,24 @@ void SetUpServer(player_t* player){
   char port[12];  
   
   sprintf(port, "%d", (int)(atoi(player->port ) + player->ID + 1));
+  for (int i = 0; i< 12; i++){
+    player->server_port[i] = port[i];
+  }
+  
+  if (player->ID == 0){
+    sprintf(player->leftPort, "%d", (int)(atoi(player->port ) + player->playsNum));
+  }
+  else{
+    sprintf(player->leftPort, "%d", (int)(atoi(player->port ) + player->ID));
+  }
+
+  if (player->ID == player->playsNum -1){
+    sprintf(player->rightPort, "%d", (int)(atoi(player->port ) + 1));
+  }
+  else{
+    sprintf(player->rightPort, "%d", (int)(atoi(player->port ) + player->ID + 1));
+  }
+  
   //printf()  
   memset(&host_info, 0, sizeof(host_info));
 
@@ -123,12 +146,78 @@ void SetUpServer(player_t* player){
 
   player->local_host_info_list = host_info_list;
   player->listen_fd = socket_fd;
-  printf("ffffkkk");
+  //printf("%s", port);
   return;
 }
 
 
+// as a server, it should use the listen_fd to receive
+// send to 
+void initConnectToRight(player_t* player){
+  // receive the left player's hostname and
+  struct sockaddr_storage socket_addr;
+  socklen_t socket_addr_len = sizeof(socket_addr);
+  if (player->ID == 0){
+    int Rightfd = accept(player->listen_fd, (struct sockaddr *)&socket_addr, &socket_addr_len);
+    
+    if (Rightfd == -1) {
+      printf("Error: cannot accept connection on socket\n");
+      exit(1);
+    }
+    //recv(socket_fd, &id, sizeof(int), 0);
+    printf("Player 0 accept \n");
+  }
+  //printf("Server received: %s\n", buffer);
+}
 
+
+void ConnectToLeft(player_t* player){
+  if (player->ID == 0){
+    return;
+  }
+  
+  int status;
+  int socket_fd;
+  struct addrinfo host_info;
+  struct addrinfo *host_info_list;
+  const char *hostname = player->host;
+    
+  memset(&host_info, 0, sizeof(host_info));
+  host_info.ai_family   = AF_UNSPEC;
+  host_info.ai_socktype = SOCK_STREAM;
+  printf("%s", player->leftPort);
+  status = getaddrinfo(hostname, player->leftPort, &host_info, &host_info_list);
+  if (status != 0) {
+    printf("Error: cannot get address info for host\n");
+    if (hostname != NULL){
+      printf("  (%s, %s)\n", hostname, player->leftPort);
+    }
+    exit(1);
+  }
+
+  socket_fd = socket(host_info_list->ai_family, 
+		     host_info_list->ai_socktype, 
+		     host_info_list->ai_protocol);
+  if (socket_fd == -1) {
+    printf("Error: cannot create socket");
+    if (hostname != NULL){
+      printf("  (%s, %s)\n", hostname, player->leftPort);
+    }
+    exit(1);
+  } 
+  
+  printf("Connecting to %s on port %s ...", hostname, player->leftPort);
+  
+  status = connect(socket_fd, host_info_list->ai_addr, host_info_list->ai_addrlen);
+  if (status == -1) {
+    printf("Error: cannot connect to socket");
+    if (hostname != NULL){
+      printf("  (%s, %s)\n", hostname, player->leftPort);
+    }
+    exit(1);
+  }
+  
+}
 
 
 
@@ -157,9 +246,12 @@ int main(int argc, char** argv){
   //
   SetUpServer(&player);
 
-  //ConnectToLeft(&player);
-
-
+  // as a server 
+  // player 0 wait
+  initConnectToRight(&player);
+   
+  // as a clent 
+  ConnectToLeft(&player);
 
   
   freeaddrinfo(player.master_host_info_list);
