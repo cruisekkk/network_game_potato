@@ -7,8 +7,7 @@ typedef struct Node Node_t;
 
 struct potato{
   int hops;
-  int ID;
-  struct potato* ID_head;
+  int ID[1024];
 };
   
 typedef struct potato potato_t;

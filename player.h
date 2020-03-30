@@ -4,6 +4,7 @@ typedef struct player{
   int ID;
   int playsNum;
   potato_t Potato;
+  int hops;
   const char* port;
   const char* host;
   // player info as server
@@ -21,6 +22,5 @@ typedef struct player{
   char leftPort[12];
   
   char rightPort[12];
-  
   
 }player_t;

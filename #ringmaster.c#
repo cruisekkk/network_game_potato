@@ -207,7 +207,8 @@ int main(int argc, char** argv){
     printf("<%d>,", trace[i]);
   }
   printf("<%d>\n", trace[GameCtrler.numHops-1]);
-  
+
+  // tell the 
   freeaddrinfo(GameCtrler.host_info_list);
   close(GameCtrler.listen_fd);
   return EXIT_SUCCESS;
