@@ -161,16 +161,17 @@ void WaitRight(player_t* player){
   struct sockaddr_storage socket_addr;
   socklen_t socket_addr_len = sizeof(socket_addr);
   //if (player->ID == 0){
-    int Rightfd = accept(player->listen_fd, (struct sockaddr *)&socket_addr, &socket_addr_len);
-    
-    if (Rightfd == -1) {
-      printf("Error: cannot accept connection on socket\n");
-      exit(1);
-    }
-    //recv(socket_fd, &id, sizeof(int), 0);
-    printf("Player %d accept \n", player->ID);
-    //}
+  int Rightfd = accept(player->listen_fd, (struct sockaddr *)&socket_addr, &socket_addr_len);
+  
+  if (Rightfd == -1) {
+    printf("Error: cannot accept connection on socket\n");
+    exit(1);
+  }
+  //recv(socket_fd, &id, sizeof(int), 0);
+  printf("Player %d accept \n", player->ID);
+  //}
   //printf("Server received: %s\n", buffer);
+  player->server_with_right_fd = Rightfd;
 }
 
 
@@ -220,6 +221,22 @@ void ConnectToLeft(player_t* player){
     exit(1);
   }
   
+  player->client_with_left_fd = socket_fd;
+}
+
+void start_receive_send(player_t* player){
+  // receive from the master
+  potato_t potato;
+  potato.ID = -1;
+  recv(player->master_conn_fd, &potato, sizeof(int), 0);
+  printf("the starter's ID is %d", potato.ID);
+  
+  if(potato.ID != player->ID){
+    return;
+  }
+
+  // receive and resend
+  printf("i am the starter!");
 }
 
 
@@ -249,6 +266,7 @@ int main(int argc, char** argv){
   printf("%d have connect to master", player.ID);
   //sleep(5);
   SetUpServer(&player);
+  
   //
   //sync
   int sync = 0;
@@ -263,27 +281,41 @@ int main(int argc, char** argv){
   }
 
   if(player.ID != 0 && player.ID != 1){
+    int s = 0;
     WaitRight(&player);
     ConnectToLeft(&player);
-    
+    send(player.master_conn_fd, &s, sizeof(int), 0);
   }
   
   if (player.ID == 1){
+    int s = 0;
     ConnectToLeft(&player);
     printf("1 connect to left!\n");
     WaitRight(&player);
     printf("1 wait finished !\n");
+    send(player.master_conn_fd, &s, sizeof(int), 0);
   }
 
 
   if (player.ID == 0){
     //sleep(10);
+    int s = 0;
     ConnectToLeft(&player);
     printf("0 connect finished !\n");
+    send(player.master_conn_fd, &s, sizeof(int), 0);
    }
  
   
-  printf("\ngood\n");
+  printf("\n start the game\n");
+
+
+  start_receive_send(&player);
+  //wait_send(&player);
+
+
+
+
+  
   freeaddrinfo(player.master_host_info_list);
   close(player.master_conn_fd);
 }

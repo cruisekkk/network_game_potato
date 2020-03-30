@@ -4,6 +4,8 @@
 #include <string.h>
 #include <netdb.h>
 #include <sys/socket.h>
+#include <time.h>
+#include <sys/times.h>
 
 // receive the user input
 // set the basic information in the game:
@@ -118,10 +120,15 @@ void SetUpServer(ringmaster_t* Game){
   return;
 }
 
-void waitForPlayers(ringmaster_t* GameCtr){
-  
+
+void waitForPlayers(ringmaster_t* Game){
+  int sync = 0;
+  for (int id = 0; id < Game->numPlayers; ++id){
+    recv(Game->client_fds[id], &sync, sizeof(int), 0);
+  }
   
 }
+
 
 int main(int argc, char** argv){
   if (argc != 4){
@@ -152,11 +159,31 @@ int main(int argc, char** argv){
   // send the id and total num to players
   SetUpServer(&GameCtrler);
   
-  printf("Ready to start game\n");
+  //printf("Ready to start game\n");
   waitForPlayers(&GameCtrler);
 
-  while(1){
-  }
+  //
+  printf("Ready to start game\n");
+
+  // send potato
+  //while(1){
+    // find the first player to send 
+  int init_player_id = 0;
+  srand((unsigned int)time(NULL) + init_player_id);
+  init_player_id = rand() % (GameCtrler.numPlayers -1);
+  GameCtrler.Potato.ID = init_player_id;
+  printf("the init id is %d\n", GameCtrler.Potato.ID);
+  GameCtrler.Potato.hops = GameCtrler.numHops;
+  GameCtrler.Potato.ID_head = NULL;
+  
+  for (int i = 0; i < GameCtrler.numPlayers; ++i){
+      send(GameCtrler.client_fds[i], &(GameCtrler.Potato), sizeof(potato_t),0);
+    }
+    
+    //}
+
+
+
   
   freeaddrinfo(GameCtrler.host_info_list);
   close(GameCtrler.listen_fd);
