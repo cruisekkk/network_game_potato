@@ -96,12 +96,22 @@ void SetUpServer(ringmaster_t* Game){
     }
    
     send(client_player_fds[id], &id, sizeof(int), 0);
-    send(client_player_fds[id], &(Game->numPlayers), sizeof(int), 0);
+    //send(client_player_fds[id], &(Game->numPlayers), sizeof(int), 0);
     printf("Player %d is ready to play\n", id);
     Game->client_fds[id] = client_player_fds[id];
     //printf("Server received: %s\n", buffer);
   }
+  
+  for (int id = 0; id < Game->numPlayers; ++id){
+    sleep(1);
+    send(client_player_fds[id], &(Game->numPlayers), sizeof(int), 0);
+  }
 
+  // sync
+  for (int id = 0; id < Game->numPlayers; ++id){
+    sleep(1);
+    send(client_player_fds[id], &(Game->numPlayers), sizeof(int), 0);
+  }
 
   Game->host_info_list = host_info_list;
   Game->listen_fd = socket_fd;
@@ -145,7 +155,9 @@ int main(int argc, char** argv){
   printf("Ready to start game\n");
   waitForPlayers(&GameCtrler);
 
-
+  while(1){
+  }
+  
   freeaddrinfo(GameCtrler.host_info_list);
   close(GameCtrler.listen_fd);
   return EXIT_SUCCESS;

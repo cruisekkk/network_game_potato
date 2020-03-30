@@ -249,6 +249,7 @@ int main(int argc, char** argv){
   printf("%d have connect to master", player.ID);
   //sleep(5);
   SetUpServer(&player);
+  
   //
   //sync
   int sync = 0;
