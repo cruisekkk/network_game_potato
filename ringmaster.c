@@ -28,21 +28,24 @@ void initGameCtrler(ringmaster_t* Game, char** input){
   }
 }
 
+// The initialized output for ringmaster
 void initOutput(ringmaster_t* Game){
   printf("Potato Ringmaster\n");
   printf("Players = %d\n", Game->numPlayers);
   printf("Hops = %d\n", Game->numHops);
 }
 
+// This function set up the connections between players and master
+// by using TCP funcitons
+// Inside the function, there is a syncronization technique to keep the communication smooth
 void SetUpServer(ringmaster_t* Game){
   int status;
   int socket_fd;
   struct addrinfo host_info;
   struct addrinfo *host_info_list;
   const char *hostname = NULL;
-
+  // clear the host info
   memset(&host_info, 0, sizeof(host_info));
-
   host_info.ai_family   = AF_UNSPEC;
   host_info.ai_socktype = SOCK_STREAM;
   host_info.ai_flags    = AI_PASSIVE;
@@ -89,44 +92,47 @@ void SetUpServer(ringmaster_t* Game){
   struct sockaddr_storage socket_addr;
   socklen_t socket_addr_len = sizeof(socket_addr);
   int client_player_fds[Game->numPlayers];
-  
+
+  // this loop is for the initialization of player's id for all players
+  // they do not know their id before this master informed them
+  // using send funciton
   for (int id = 0; id < Game->numPlayers; ++id){
     client_player_fds[id] = accept(socket_fd, (struct sockaddr *)&socket_addr, &socket_addr_len);
     if (client_player_fds[id] == -1) {
       printf("Error: cannot accept connection on socket\n");
       exit(1);
     }
-   
     send(client_player_fds[id], &id, sizeof(int), 0);
-    //send(client_player_fds[id], &(Game->numPlayers), sizeof(int), 0);
     printf("Player %d is ready to play\n", id);
     Game->client_fds[id] = client_player_fds[id];
-    //printf("Server received: %s\n", buffer);
   }
-  
+
+  // this loop is to send all players to know the numbers of the player
+  // therefore they could determine their neighbors
   for (int id = 0; id < Game->numPlayers; ++id){
     sleep(1);
     send(client_player_fds[id], &(Game->numPlayers), sizeof(int), 0);
   }
 
-  // sync
+  // syncronization IO
   for (int id = 0; id < Game->numPlayers; ++id){
     sleep(1);
     send(client_player_fds[id], &(Game->numPlayers), sizeof(int), 0);
   }
 
+  // store the file descriptor information in the ring object
   Game->host_info_list = host_info_list;
   Game->listen_fd = socket_fd;
   return;
 }
 
 
+// this function would wait for time when all players connect to their neighbors 
 void waitForPlayers(ringmaster_t* Game){
   int sync = 0;
   for (int id = 0; id < Game->numPlayers; ++id){
     recv(Game->client_fds[id], &sync, sizeof(int), 0);
   }
-  
 }
 
 
@@ -159,7 +165,7 @@ int main(int argc, char** argv){
   // send the id and total num to players
   SetUpServer(&GameCtrler);
   
-  //printf("Ready to start game\n");
+  // wait for the connection among players
   waitForPlayers(&GameCtrler);
 
   printf("Ready to start game\n");
@@ -171,7 +177,8 @@ int main(int argc, char** argv){
   GameCtrler.Potato.ID[0] = init_player_id;
   //printf("the init id is %d\n", GameCtrler.Potato.ID[0]);
   GameCtrler.Potato.hops = GameCtrler.numHops;
-  
+
+  // send the first players information and leave players to determine
   for (int i = 0; i < GameCtrler.numPlayers; ++i){
     send(GameCtrler.client_fds[i], &(GameCtrler.Potato.ID), sizeof(GameCtrler.Potato.ID),0);
     sleep(0.5);
@@ -179,6 +186,9 @@ int main(int argc, char** argv){
   }
 
   // receive the potato trace
+  // when any player send bit to the ringmaster
+  // select funciton would notice ring to IO
+  // read the trace using buffer int[1024]
   fd_set read_fds;
   int fdmax = 0;
   
@@ -193,8 +203,7 @@ int main(int argc, char** argv){
     printf("Error on select funciton\n");
     return -1;
   }
-  
-  //printf("after select\n");
+
   int trace[1024];
   for(int i = 0; i < GameCtrler.numPlayers; i++){
     if(FD_ISSET(GameCtrler.client_fds[i], &read_fds)){
@@ -202,11 +211,17 @@ int main(int argc, char** argv){
     }
   } 
 
+  // display the trace of the potato
   printf("Trace of potato:\n");
   for (int i = 0; i < GameCtrler.numHops-1; i++){
     printf("<%d>,", trace[i]);
   }
   printf("<%d>\n", trace[GameCtrler.numHops-1]);
+
+  // tell all of the players game is over
+  for (int i = 0; i < GameCtrler.numPlayers; ++i){
+    send(GameCtrler.client_fds[i], &(GameCtrler.Potato.hops), sizeof(int),0);
+  }
   
   freeaddrinfo(GameCtrler.host_info_list);
   close(GameCtrler.listen_fd);

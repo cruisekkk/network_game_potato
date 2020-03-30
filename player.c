@@ -8,12 +8,15 @@
 #include <time.h>
 #include <sys/times.h>
 
+// receive the server's host and port information
 void initPlayer(player_t* player, char** input){
   player->host = input[1];
   player->port = input[2];
   // lack port valid check
 }
 
+// This funciton set up the connection between players and master
+// Player is client side 
 void ConnectToMaster(player_t* player){
   int status;
   int socket_fd;
@@ -43,9 +46,8 @@ void ConnectToMaster(player_t* player){
       printf("  (%s, %s)\n", hostname, port);
     }
     exit(1);
-  } 
-  
-  printf("Connecting to %s on port %s ...", hostname, port);
+  }  
+  //printf("Connecting to %s on port %s ...", hostname, port);
   
   status = connect(socket_fd, host_info_list->ai_addr, host_info_list->ai_addrlen);
   if (status == -1) {
@@ -59,15 +61,12 @@ void ConnectToMaster(player_t* player){
   int id = -1;
   // take the player's id
   recv(socket_fd, &id, sizeof(int), 0);
-  printf("the first recv\n");
   int num = 0;
   // get the toal num of the players
   sleep(1);
   recv(socket_fd, &num, sizeof(int), 0);
-  printf("the second recv\n");
   player->playsNum = num;
-  printf("%d\n", num);
-  printf("my id is %d", id);
+  printf("Connected as player %d out of %d total players\n", id, num);
   player->ID = id;
 
   player->master_host_info_list = host_info_list;
@@ -75,7 +74,10 @@ void ConnectToMaster(player_t* player){
   return;
 }
 
-
+// Each player would set up a server socket to
+// connect one neighbor client
+// also connected by a neighbor server
+// in my model, the right side is always client
 void SetUpServer(player_t* player){
   int status;
   int socket_fd;
@@ -148,35 +150,31 @@ void SetUpServer(player_t* player){
     }
     exit(1);
   }
-
+  // store the server info 
   player->local_host_info_list = host_info_list;
   player->listen_fd = socket_fd;
-  //printf("%s", port);
   return;
 }
 
 
-// as a server, it should use the listen_fd to receive
-// send to 
+// This function show how the player, as a server
+// use the listen_fd to receive/wait the clients notification 
 void WaitRight(player_t* player){
   // receive the left player's hostname and
   struct sockaddr_storage socket_addr;
   socklen_t socket_addr_len = sizeof(socket_addr);
-  //if (player->ID == 0){
   int Rightfd = accept(player->listen_fd, (struct sockaddr *)&socket_addr, &socket_addr_len);
   
   if (Rightfd == -1) {
     printf("Error: cannot accept connection on socket\n");
     exit(1);
   }
-  //recv(socket_fd, &id, sizeof(int), 0);
-  printf("Player %d accept \n", player->ID);
-  //}
-  //printf("Server received: %s\n", buffer);
+
   player->server_with_right_fd = Rightfd;
 }
 
-
+// This function show how the player, as a client
+// use the client_with_left_fd to send connect to server
 void ConnectToLeft(player_t* player){
   int status;
   int socket_fd;
@@ -187,7 +185,6 @@ void ConnectToLeft(player_t* player){
   memset(&host_info, 0, sizeof(host_info));
   host_info.ai_family   = AF_UNSPEC;
   host_info.ai_socktype = SOCK_STREAM;
-  printf("%s", player->leftPort);
   status = getaddrinfo(hostname, player->leftPort, &host_info, &host_info_list);
   if (status != 0) {
     printf("Error: cannot get address info for host\n");
@@ -208,8 +205,7 @@ void ConnectToLeft(player_t* player){
     exit(1);
   } 
   
-  printf("Connecting to %s on port %s ...", hostname, player->leftPort);
-  
+  //printf("Connecting to %s on port %s ...", hostname, player->leftPort); 
   status = connect(socket_fd, host_info_list->ai_addr, host_info_list->ai_addrlen);
   if (status == -1) {
     printf("Error: cannot connect to socket");
@@ -222,6 +218,9 @@ void ConnectToLeft(player_t* player){
   player->client_with_left_fd = socket_fd;
 }
 
+// This function only works for the first receiver
+// as the potato was sent by master
+// It also notify the first player to send potato to others
 void start_receive_send(player_t* player){
   // receive from the master
   int ID[1024];
@@ -234,8 +233,6 @@ void start_receive_send(player_t* player){
   }
   player->hops = hops;
   player->Potato.hops = player->hops;
-  //printf("the hops all are %d\n", player->hops);
-  //printf("the starter's ID is %d\n", player->Potato.ID[0]);
   
   if(player->Potato.ID[0] != player->ID){
     return;
@@ -246,8 +243,9 @@ void start_receive_send(player_t* player){
   //hops -1!
   player->Potato.hops--;
   if(player->Potato.hops == 0){
-    printf("see here %d\n", player->Potato.ID[0]);
+    printf("I'm it\n");
     send(player->master_conn_fd, &player->Potato.ID, sizeof(int[1024]), 0);
+    return;
   }
 
   // send hop and ID sequence to another player
@@ -277,13 +275,18 @@ void start_receive_send(player_t* player){
       player->Potato.ID[1] = player->playsNum -1;
     }
   }
-  
+  printf("Sending potato to %d\n", player->Potato.ID[1]);
   send(player_fds[send_player_order], &(player->Potato.hops), sizeof(int), 0);
   send(player_fds[send_player_order], &(player->Potato.ID), sizeof(int[1024]), 0);
 }
 
 
-void wait_send(player_t* player){
+// This fucntion is for all players
+// in the game, player would wait the potato and add its ID in the queue
+// substract the hops inside, then send it to another player(must beneighbor)
+// receive is implemented by select
+// send is implemented by random generator
+int wait_send(player_t* player){
   fd_set read_fds;
   int fdmax;
   if (player->server_with_right_fd > player->client_with_left_fd){
@@ -293,11 +296,12 @@ void wait_send(player_t* player){
     fdmax = player->client_with_left_fd;
   }
   
-  int player_fds[2];
+  int player_fds[3];
   player_fds[0] = player->server_with_right_fd;
   player_fds[1] = player->client_with_left_fd;
+  player_fds[2] = player->master_conn_fd;
   FD_ZERO(&read_fds);
-  for(int i = 0; i < 2; i++){
+  for(int i = 0; i < 3; i++){
     FD_SET(player_fds[i], &read_fds);
     if(player_fds[i] > fdmax)
       fdmax = player_fds[i];
@@ -305,9 +309,14 @@ void wait_send(player_t* player){
   
   if(select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1){
     printf("Error on select funciton\n");
-    return;
+    return 1;
   }
 
+  if(FD_ISSET(player_fds[2], &read_fds)){
+    recv(player->master_conn_fd, &(player->Potato.hops), sizeof(int), 0);
+    return 1;
+  }
+  
   for(int i = 0; i < 2; i++){
     if(FD_ISSET(player_fds[i], &read_fds)){
       recv(player_fds[i], &(player->Potato.hops), sizeof(int), 0);
@@ -316,9 +325,10 @@ void wait_send(player_t* player){
   }
   player->Potato.hops--;
   if(player->Potato.hops == 0){
+    printf("I'm it\n");
     send(player->master_conn_fd, &player->Potato.ID, sizeof(int[1024]), 0);
+    return 1;
   }
-  printf("after select");
   
   //// sending 
   int send_player_order = 0;
@@ -343,13 +353,15 @@ void wait_send(player_t* player){
       player->Potato.ID[player->hops - player->Potato.hops] = player->playsNum -1;
     }
   }
-  
+  printf("Sending potato to %d\n", player->Potato.ID[player->hops - player->Potato.hops]);
   send(player_fds[send_player_order], &(player->Potato.hops), sizeof(int),0);
   send(player_fds[send_player_order], &(player->Potato.ID), sizeof(int[1024]),0);
+  return 0;
 }
 
 
 int main(int argc, char** argv){
+  // IO checker
   if (argc != 3){
     fprintf(stderr, "invalid arguments numbers\n");
     printf("need two arguments here:\nmachineName, portNum\n");
@@ -371,20 +383,16 @@ int main(int argc, char** argv){
   initPlayer(&player, argv);
   // the first connection
   ConnectToMaster(&player);
-  printf("%d have connect to master", player.ID);
-  //sleep(5);
   SetUpServer(&player);
   
-  //
   //sync
   int sync = 0;
   recv(player.master_conn_fd, &sync, sizeof(int), 0);
-    
-  // as a server 
-  // player 0 wait
+
+  // loop algorithm to connect with each other
+  // a loop C/S model is formed by the following logic
   if (player.ID == 0){
     WaitRight(&player);
-    printf("0 wait finished !\n");
   }
 
   if(player.ID != 0 && player.ID != 1){
@@ -407,14 +415,25 @@ int main(int argc, char** argv){
     send(player.master_conn_fd, &s, sizeof(int), 0);
    }
  
-  printf("\n start the game\n");
-
+  // start the game
   start_receive_send(&player);
+  if (player.Potato.hops == 0){
+    freeaddrinfo(player.master_host_info_list);
+    close(player.master_conn_fd);
+    return EXIT_SUCCESS;
+  }
+  // when quit is 1, it represents the hops is zero or something wrong happend
+  // and the player must quit the game
   while(1){
-    wait_send(&player);
+    int quit = 0;
+    quit = wait_send(&player);
     sleep(1);
+    if (quit == 1){
+      break;
+    }
   }
   
   freeaddrinfo(player.master_host_info_list);
   close(player.master_conn_fd);
+  return EXIT_SUCCESS;
 }
